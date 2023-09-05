@@ -67,6 +67,26 @@ def main():
         with open(args.description_dict_path, "r") as f:
             description_dict = json.load(f)
 
+    if args.tokenizer is None:
+        models = [
+            "databricks/dolly-v2-3b",
+            "databricks/dolly-v2-12b",
+            "togethercomputer/RedPajama-INCITE-7B-Instruct",
+            "facebook/opt-125m",
+            "mosaicml/mpt-7b-instruct",
+            "meta-llama/Llama-2-7b-chat-hf",
+            "mosaicml/mpt-7b-instruct",
+            "togethercomputer/RedPajama-INCITE-7B-Instruct",
+            "facebook/opt-6.7b",
+            "bigscience/bloomz-560m",
+            "openlm-research/open_llama_3b",
+            "meta-llama/Llama-2-13b-chat-hf"
+        ]
+        for name in models:
+            if name.replace('/', '-') in args.model_args:
+                args.tokenizer = name
+                break
+
     results = evaluator.simple_evaluate(
         model=args.model,
         model_args=args.model_args,
@@ -84,7 +104,7 @@ def main():
         output_base_path=args.output_base_path,
         tokenizer=args.tokenizer,
     )
-
+  
     dumped = json.dumps(results, indent=2)
     print(dumped)
 
