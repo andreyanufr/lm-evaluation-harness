@@ -44,7 +44,10 @@ setuptools.setup(
         "transformers>=4.1",
         "zstandard",
         "accelerate>=0.17.1",
-        "optimum-intel>=1.10.1"
+        "optimum-intel>=1.10.1",
+        "openvino==2023.1.0.dev20230811",
+        "openvino-dev==2023.1.0.dev20230811",
+        "onnx==1.14.1"
     ],
     extras_require={
         "dev": ["black", "flake8", "pre-commit", "pytest", "pytest-cov"],

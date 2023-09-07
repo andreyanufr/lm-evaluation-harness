@@ -100,7 +100,7 @@ class OptimumIntelAutoCausalLM(BaseLM):
 
         returns: a torch tensor of shape [batch, sequence, vocab] with the
         logits returned from the model
-        """:
+        """
 
         attention_mask = inps.clone()
         attention_mask[:] = 1.0
