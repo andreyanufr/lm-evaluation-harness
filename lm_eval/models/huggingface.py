@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Mapping, NewType, Optional, Tuple, Union
 from tqdm import tqdm
 
-from transformers import BatchEncoding
+from transformers import BatchEncoding, GPTQConfig
 
 from lm_eval import utils
 from lm_eval.base import BaseLM
@@ -215,6 +215,7 @@ class HuggingFaceAutoLM(BaseLM):
                 max_cpu_memory,
                 offload_folder,
             )
+
         self.model = self._create_auto_model(
             pretrained=pretrained,
             quantized=quantized,
@@ -289,17 +290,26 @@ class HuggingFaceAutoLM(BaseLM):
                         model_kwargs["bnb_4bit_compute_dtype"] = _get_dtype(
                             bnb_4bit_compute_dtype
                         )
-            model = self.AUTO_MODEL_CLASS.from_pretrained(
+
+            tokenizer = self.AUTO_TOKENIZER_CLASS.from_pretrained(
                 pretrained,
-                revision=revision + ("/" + subfolder if subfolder is not None else ""),
-                device_map=device_map,
-                max_memory=max_memory,
-                offload_folder=offload_folder,
-                load_in_8bit=load_in_8bit,
                 trust_remote_code=trust_remote_code,
-                torch_dtype=torch_dtype,
-                **model_kwargs,
             )
+
+            quantization_config = GPTQConfig(bits=4, dataset = "c4", tokenizer=tokenizer)#, disable_exllama=True)
+            model =  self.AUTO_MODEL_CLASS.from_pretrained(pretrained, device_map=device_map, quantization_config=quantization_config)
+
+            # model = self.AUTO_MODEL_CLASS.from_pretrained(
+            #     pretrained,
+            #     revision=revision + ("/" + subfolder if subfolder is not None else ""),
+            #     device_map=device_map,
+            #     max_memory=max_memory,
+            #     offload_folder=offload_folder,
+            #     load_in_8bit=load_in_8bit,
+            #     trust_remote_code=trust_remote_code,
+            #     torch_dtype=torch_dtype,
+            #     **model_kwargs,
+            # )
         else:
             from auto_gptq import AutoGPTQForCausalLM
 

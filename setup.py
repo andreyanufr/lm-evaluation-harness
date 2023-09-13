@@ -38,7 +38,7 @@ setuptools.setup(
         "sqlitedict",
         "torch>=1.7",
         "tqdm-multiprocess",
-        "transformers>=4.1",
+        "transformers>=4.33.1",
         "zstandard",
         "accelerate>=0.17.1",
         "optimum-intel>=1.9.3",
