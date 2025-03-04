@@ -584,6 +584,10 @@ class HFLM(TemplateLM):
                             model_kwargs["bnb_4bit_compute_dtype"]
                         )
 
+            fp8 = False
+            if 'fp8' in model_kwargs:
+                fp8 = model_kwargs['fp8']
+                del model_kwargs['fp8']
             self._model = self.AUTO_MODEL_CLASS.from_pretrained(
                 pretrained,
                 revision=revision,
@@ -592,6 +596,9 @@ class HFLM(TemplateLM):
                 gguf_file=gguf_file,
                 **model_kwargs,
             )
+            if fp8:
+                from .fp8_wrapper import wrap_and_find_params
+                self._model = wrap_and_find_params(self._model, self.tokenizer)
         else:
             if autogptq and gptqmodel:
                 raise ValueError(
