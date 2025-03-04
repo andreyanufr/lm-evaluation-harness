@@ -3,6 +3,11 @@ import torch.nn as nn
 from torch.nn.parameter import Parameter
 from datasets import load_dataset
 
+import numpy as np
+
+import openvino as ov
+from openvino.runtime import opset13 as opset
+
 class LinearFP8(nn.Module):
     def __init__(self, module):
         super().__init__()
@@ -179,6 +184,41 @@ def wrap_and_find_params(model, tokenizer):
     return model
 
 
+def compress_decompress_ov_model(in_shape):
+    data = opset.parameter(in_shape, name="input")
+    scale = opset.constant(np.array([1.0], dtype=np.float32), name="scale")
+    fake_convert = opset.fake_convert(data, scale)
+    
+    model = ov.Model([fake_convert], [data])
+
+    compiled_model = ov.compile_model(model)
+    return compiled_model
+
+    #return lambda parameters: compiled_model(parameters)[0]
+
+
+def compress_decompress_pt(data):
+    pt_data = torch.tensor(data)
+    data_type = pt_data.dtype
+    
+    pt_data = pt_data.to(torch.float8_e4m3fn).to(data_type)
+    
+    return pt_data.numpy()
+
+
+def cmp_ov_pt(in_shape=1000):
+    data = np.random.rand(in_shape) * 440
+    
+    ov_model = compress_decompress_ov_model([in_shape])
+    
+    data_ov = ov_model(data)[0]
+    data_pt = compress_decompress_pt(data)
+    
+    print("OV - PT: ", np.mean(np.abs(data_ov - data_pt)))
+    print("FP - OV: ", np.mean(np.abs(data_ov - data)))
+    print("FP - PT: ", np.mean(np.abs(data - data_pt)))
+
+
 if __name__ == "__main__":
     from transformers import AutoModelForCausalLM
     from transformers import AutoTokenizer
@@ -190,3 +230,6 @@ if __name__ == "__main__":
     model_fp8 = wrap_model(model_fp)
     print(model_fp8)
     collect_stats(model_fp8, tokenizer)
+
+    for i in range(10):
+        cmp_ov_pt()
