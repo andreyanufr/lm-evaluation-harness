@@ -5,8 +5,8 @@ from datasets import load_dataset
 
 import numpy as np
 
-import openvino as ov
-from openvino.runtime import opset13 as opset
+#import openvino as ov
+#from openvino.runtime import opset13 as opset
 
 class LinearFP8(nn.Module):
     def __init__(self, module):
@@ -21,8 +21,11 @@ class LinearFP8(nn.Module):
         self.w_scale = nn.Parameter(
             torch.ones((module.out_features, 1)).to(torch.float32)
         )
-        self.a_scale = nn.Parameter(
-            torch.ones((module.out_features, 1)).to(torch.float32)
+        self.a_scale_in = nn.Parameter(
+            torch.ones((1, 1)).to(torch.float32)
+        )
+        self.a_scale_out = nn.Parameter(
+            torch.ones((1, 1)).to(torch.float32)
         )
     
     def convert_weight(self):
@@ -50,12 +53,22 @@ class LinearFP8(nn.Module):
         max_val = torch.finfo(torch.float8_e4m3fn).max
         min_val = torch.finfo(torch.float8_e4m3fn).min
 
-        x_fp8 = (x / self.a_scale)
+        x_fp8 = (x / self.a_scale_in)
         x_fp8 = torch.clamp(x_fp8, min_val, max_val)
         x_fp8 = x_fp8.to(torch.float8_e4m3fn)
-        x_fp8 = x_fp8.to(x_type) * self.a_scale
+        x_fp8 = x_fp8.to(x_type) * self.a_scale_in
         
-        return self.module(x_fp8)
+        res = self.module(x_fp8)
+
+        if not ('q_proj' in self.name or 'k_proj' in self.name):
+            return res
+        res_fp8 = (res / self.a_scale_out)
+        res_fp8 = torch.clamp(res_fp8, min_val, max_val)
+        res_fp8 = res_fp8.to(torch.float8_e4m3fn)
+        res_fp8 = res_fp8.to(x_type) * self.a_scale_out
+
+        return res_fp8
+        
 
 
 def convert_embeddings(layer):
@@ -72,15 +85,19 @@ def convert_embeddings(layer):
 
 
 def collect_stats(model, tokenizer):    
-    all_activations = {}
+    input_activations = {}
+    output_activations = {}
 
     def get_activations(layer_name):
         def hook(model, inputs, outputs):
-            tensor = inputs[0] if isinstance(inputs, tuple) else inputs
-            if not layer_name in all_activations:
-                all_activations[layer_name] = tensor.abs().max(1)[0]
+            tensor_in = inputs[0] if isinstance(inputs, tuple) else inputs
+            tensor_out = outputs[0] if isinstance(outputs, tuple) else outputs
+            if not layer_name in input_activations:
+                input_activations[layer_name] = tensor_in.abs().max(1)[0]
+                output_activations[layer_name] = tensor_out.abs().max(1)[0]
             else:    
-                all_activations[layer_name] = torch.maximum(tensor.abs().max(1)[0], all_activations[layer_name])
+                input_activations[layer_name] = torch.maximum(tensor_in.abs().max(1)[0], input_activations[layer_name])
+                output_activations[layer_name] = torch.maximum(tensor_out.abs().max(1)[0], output_activations[layer_name])
         return hook   
 
     all_hooks = []
@@ -106,7 +123,7 @@ def collect_stats(model, tokenizer):
         inputs = tokenizer(data['text'], return_tensors='pt').to(model.device)
         with torch.inference_mode():
             model(**inputs)
-        if i >= 4: #128:
+        if i >= 128:
             break
 
     for hook in all_hooks:
@@ -120,11 +137,18 @@ def collect_stats(model, tokenizer):
         if type(module) == LinearFP8:
             module.run_as_fp8 = True
             module.convert_weight()
-            scale = all_activations[name].max()
+            scale = input_activations[name].max()
             s_type = scale.dtype
             scale = scale / max_val
             scale = scale.to(s_type)
-            module.a_scale.data = scale #all_activations[name].max() #/ max_val
+            module.a_scale_in.data = scale #all_activations[name].max() #/ max_val
+            
+            scale = output_activations[name].max()
+            s_type = scale.dtype
+            scale = scale / max_val
+            scale = scale.to(s_type)
+            module.a_scale_out.data = scale
+
             n_converts += 2
         if type(module) == nn.Embedding:
             convert_embeddings(module)
@@ -231,5 +255,5 @@ if __name__ == "__main__":
     print(model_fp8)
     collect_stats(model_fp8, tokenizer)
 
-    for i in range(10):
-        cmp_ov_pt()
+    # for i in range(10):
+    #     cmp_ov_pt()
