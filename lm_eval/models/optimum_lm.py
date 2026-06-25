@@ -27,11 +27,13 @@ class OptimumLM(HFLM):
         device="cpu",
         **kwargs,
     ) -> None:
+        self.ov_backend = kwargs.pop("backend", "causal")
         if "backend" in kwargs:
-            assert kwargs["backend"] in ["causal", "seq2seq"], (
-                "Currently, only OVModelForCausalLM or OVModelForSeq2SeqLM are supported."
+            assert kwargs["backend"] in ["causal", "seq2seq", "vlm"], (
+                "Currently, only OVModelForCausalLM, OVModelForSeq2SeqLM, or OVModelForVisualCausalLM are supported."
             )
-
+            if kwargs["backend"] == "vlm":
+                kwargs["backend"] = "causal"
         self.openvino_device = device
 
         super().__init__(
@@ -53,7 +55,7 @@ class OptimumLM(HFLM):
                 "package `optimum` is not installed. Please install it via `pip install optimum[openvino]`"
             )
         else:
-            from optimum.intel.openvino import OVModelForCausalLM, OVModelForSeq2SeqLM
+            from optimum.intel.openvino import OVModelForCausalLM, OVModelForSeq2SeqLM, OVModelForVisualCausalLM
 
         model_kwargs = kwargs if kwargs else {}
         if "ov_config" in model_kwargs:
@@ -77,7 +79,7 @@ class OptimumLM(HFLM):
                 )
 
         model_cls = (
-            OVModelForCausalLM if self.backend == "causal" else OVModelForSeq2SeqLM
+            OVModelForCausalLM if self.ov_backend == "causal" else OVModelForSeq2SeqLM if self.ov_backend == "seq2seq" else OVModelForVisualCausalLM
         )
         self._model = model_cls.from_pretrained(
             pretrained,
@@ -86,3 +88,6 @@ class OptimumLM(HFLM):
             device=self.openvino_device.upper(),
             **model_kwargs,
         )
+
+        if model_cls == OVModelForVisualCausalLM:
+            self._model = self._model.language_model
